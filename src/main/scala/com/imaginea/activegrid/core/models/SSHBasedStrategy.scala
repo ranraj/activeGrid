@@ -1,5 +1,7 @@
 package com.imaginea.activegrid.core.models
 
+import com.imaginea.activegrid.core.models.SoftwareProcess.{JavaProcess, PythonProcess}
+
 /**
  * Created by ranjithrajd on 3/11/16.
  */
@@ -40,26 +42,73 @@ case class SSHBasedStrategy (topology: Topology,
             .executeCommand("sudo netstat -tnap | grep LISTEN | awk 'BEGIN {OFS=\",\"; ORS= \";\"} NR > 0 {print $7}'");
           val cloudInstanceNew3 = cloudInstanceNew2.copy(processes = Set.empty)
           if(processList.isDefined){
-            resolveProcesses(site,cloudInstanceNew3.asInstanceOf[CloudInstance],connectionOption,processList.get)
+            resolveProcesses(site,cloudInstanceNew3.asInstanceOf[CloudInstance],connectionOption,processList.get,sshSession)
           }
         }
       }
     })
 
   }
-  private def resolveProcesses(site: Site,cloudInstance: CloudInstance,serverIp: String,processList: String)={
+  private def resolveProcesses(site: Site,cloudInstance: CloudInstance,serverIp: String,processList: String, sshSession: SSHSession)={
 
     val cloudInstance1 = cloudInstance.copy(tags = cloudInstance.tags.filter(tag => tag._1.equals(PROCESS_TAG)))
     val knowProcessList = SoftwareProcess.getAllProcess
 
-    processList.split(";").map(process => {
+    val processMap = processList.split(";").map(process => {
       val index = process.indexOf("/")
       val pid = process.substring(0, index)
       val pname = process.substring(index + 1)
-      knowProcessList.contains(pname)
-      //TODO : create process map
-    })
+      (pid -> pname)
+    }).toMap.filter( process => knowProcessList.contains(process._2))
 
+    processMap.foreach { case (pid, pname) =>
+      val processName: String = SoftwareProcess.toSoftwareProcess(pname) match {
+        case JavaProcess => {
+          val procInfo = sshSession.executeCommand("ps -p " + pid
+            + " -o args=ARGS | awk 'BEGIN {OFS=\",\"; ORS= \";\"} NR > 1'"); // -o
+          // vsz=MEMORY
+          procInfo.filter( procarg => {
+              KnownSoftware.getStartUpClazzMap.contains(procarg)
+            }).head
+        }
+        case PythonProcess => {
+         val procInfo = sshSession.executeCommand("ps -p " + pid
+            + " | grep -v CMD | awk '{print $4}'")
+          val result = if (procInfo.contains("carbon-cache")) {
+            val chkLb = "sudo netstat -apnt |grep LISTEN|grep :80|awk 'BEGIN {OFS=\",\";ORS=\";\"} NR > 0 {print $4}'"
+            val netStatInfo = sshSession.executeCommand(chkLb)
+            netStatInfo.map( netStat => {
+              netStat.split(";").filter(host => host.endsWith(":80")).map( tmp => KnownSoftware.Graphite.name).head
+            }).getOrElse(pname)
+          }else{
+            pname
+          }
+          result
+        }
+        case _ => pname
+      }
+      val softwareAssociatedWithProcess = getSoftwareAssociatedWithProcess(processName)
+      val processInfo = new ProcessInfo(pid = pid.toInt
+        , parentPid = pid.toInt
+        ,name = processName
+        ,software = softwareAssociatedWithProcess
+        ,id = None
+        ,command = None
+        ,owner = None
+        ,residentBytes = None
+        ,softwareVersion = None
+      )
+      val cloudInstance2 = cloudInstance.copy(processes = cloudInstance.processes + processInfo
+        ,tags = (PROCESS_TAG -> processName) :: cloudInstance.tags )
+    }
+  }
+
+  private def getSoftwareAssociatedWithProcess(processName: String): Option[Software] = {
+    val softwareLabel: String = "SoftwaresTest2"
+    val nodesList = GraphDBExecutor.getNodesByLabel(softwareLabel)
+    val softwares = nodesList.flatMap(node => Software.fromNeo4jGraph(node.getId))
+
+    softwares.find(software => software.processNames.contains(processName))
   }
   private def connectionResolver(connectionInfo: Option[String] , instance:CloudInstance , serverIp:String): Set[InstanceConnection] ={
       connectionInfo.map( connectionInfoVal => {
