@@ -18,7 +18,7 @@ case class Instance(override val id: Option[Long],
                     launchTime: Option[Long],
                     memoryInfo: Option[StorageInfo],
                     rootDiskInfo: Option[StorageInfo],
-                    tags: List[KeyValueInfo],
+                    tags: List[(String,String)],
                     sshAccessInfo: Option[SSHAccessInfo],
                     liveConnections: List[InstanceConnection],
                     estimatedConnections: List[InstanceConnection],
@@ -31,11 +31,11 @@ object Instance {
 
   val logger = Logger(LoggerFactory.getLogger(getClass.getName))
 
-  def apply(name: String, tags: List[KeyValueInfo], processes: Set[ProcessInfo]): Instance =
+  def apply(name: String, tags: List[(String,String)], processes: Set[ProcessInfo]): Instance =
     Instance(None, None, name, None, None, None, None, None, None, None, None, tags, None, List.empty[InstanceConnection], List.empty[InstanceConnection], processes, None, List.empty[InstanceUser])
 
   def apply(name: String): Instance =
-    Instance(None, None, name, None, None, None, None, None, None, None, None, List.empty[KeyValueInfo], None, List.empty[InstanceConnection], List.empty[InstanceConnection], Set.empty[ProcessInfo], None, List.empty[InstanceUser])
+    Instance(None, None, name, None, None, None, None, None, None, None, None, List.empty, None, List.empty[InstanceConnection], List.empty[InstanceConnection], Set.empty[ProcessInfo], None, List.empty[InstanceUser])
 
   def fromNeo4jGraph(nodeId: Long): Option[Instance] = {
     val listOfKeys = List("instanceId", "name", "state", "instanceType", "platform", "architecture", "publicDnsName")
@@ -67,9 +67,10 @@ object Instance {
 
       val relationship_keyValueInfo = "HAS_keyValueInfo"
       val childNodeIds_keyVal: List[Long] = GraphDBExecutor.getChildNodeIds(nodeId, relationship_keyValueInfo)
-      val tags: List[KeyValueInfo] = childNodeIds_keyVal.flatMap { childId =>
+      //FixMe: KeyValueInfo is modifed to Tuple
+      /*val tags: List[KeyValueInfo] = childNodeIds_keyVal.flatMap { childId =>
         KeyValueInfo.fromNeo4jGraph(childId)
-      }
+      }*/
 
       val relationship_inst1 = "HAS_instanceConnection1"
       val childNodeIds_inst1: List[Long] = GraphDBExecutor.getChildNodeIds(nodeId, relationship_inst1)
@@ -96,7 +97,7 @@ object Instance {
       }.toSet
 
       Some(Instance(Some(nodeId), instanceId, name, state, instanceType, platform, architecture, publicDnsName, launchTime, memoryInfo, rootDiskInfo,
-        tags, sshAccessInfo, liveConnections, estimatedConnections, processes, imageInfo, existingUsers))
+        List.empty, sshAccessInfo, liveConnections, estimatedConnections, processes, imageInfo, existingUsers))
     }
     else {
       logger.warn(s"could not get graph properties for Instance node with $nodeId")
@@ -151,11 +152,11 @@ object Instance {
         case None => logger.info("entity Instance has no imageInfo")
       }
 
-      val relationship_keyVal = "HAS_keyValueInfo"
+     /* val relationship_keyVal = "HAS_keyValueInfo"
       entity.tags.foreach { tag =>
         val tagNode = tag.toNeo4jGraph(tag)
         GraphDBExecutor.setGraphRelationship(node, tagNode, relationship_keyVal)
-      }
+      }*/
 
       val relationship_inst1 = "HAS_instanceConnection1"
       entity.liveConnections.foreach { liveConnection =>
