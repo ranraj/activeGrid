@@ -131,6 +131,15 @@ object KnownSoftware {
     override val discoverApplications: Boolean = false
   }
 
+  def toKnownSoftware(software: String): KnownSoftware = {
+    software match {
+      case "Nginx" => Nginx
+      case "Graphite" => Graphite
+      case "PServer" => PServer
+      case "Mysql" => Mysql
+      case "Tomcat" => Apache
+    }
+  }
 }
 
 trait ApplicationDiscovery {

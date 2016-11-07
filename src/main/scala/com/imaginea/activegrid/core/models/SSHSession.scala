@@ -1,5 +1,7 @@
 package com.imaginea.activegrid.core.models
 
+import java.io.Closeable
+
 import com.jcraft.jsch.{ChannelExec, JSch}
 
 /**
@@ -10,8 +12,8 @@ case class SSHSession(serverIp: String,
                       keyLocation:String,
                       port: Option[Int],
                       passPhrase: Option[String],
-                      sessionTimeout: Int = SSHSession.DEFAULT_SESSION_TIMEOUT,
-                      ) {
+                      sessionTimeout: Int = SSHSession.DEFAULT_SESSION_TIMEOUT
+                      ) extends Closeable {
 
   val jsch: JSch = new JSch()
   val session = jsch.getSession(userName, serverIp)
@@ -40,6 +42,12 @@ case class SSHSession(serverIp: String,
       None
     } else {
       Some(scala.io.Source.fromInputStream(inputStream).getLines().mkString("\n"))
+    }
+  }
+
+  override def close(): Unit = {
+    if(this.session != null){
+      this.session.disconnect()
     }
   }
 }
