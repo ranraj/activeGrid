@@ -22,6 +22,6 @@ object ConnectionStrategy {
   implicit def toConnectionStrategy(name: String): ConnectionStrategy = name match {
     case "SSH" => Ssh
     case "SECURITY_GROUP" => SecurityGroup
-    case _ => Ssh //Default value
+    case _ => Ssh //None value
   }
 }
