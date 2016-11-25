@@ -1597,7 +1597,12 @@ object Main extends App {
             ).getOrElse(List.empty[InstanceConnection])
           }
           onComplete(connections) {
-            case Success(connectionResponse) => complete(StatusCodes.OK, connectionResponse)
+            case Success(connectionResponse) =>
+              if(connectionResponse.isEmpty){
+                complete(StatusCodes.NoContent)
+              }else{
+                complete(StatusCodes.OK, connectionResponse)
+              }
             case Failure(exception) =>
               logger.error(s"Unable to get connection for site id $siteId. Failed with : ${exception.getMessage}", exception)
               complete(StatusCodes.BadRequest, "Unable to get Site connection.")
@@ -1610,13 +1615,13 @@ object Main extends App {
         onComplete(instancesAction(siteId,ids,action)) {
           case Success(instancesResponse) =>
             if(instancesResponse.isEmpty) {
-              complete(StatusCodes.OK, instancesResponse)
+              complete(StatusCodes.BadRequest, "Unable to apply action on the instances.")
             }else{
-              complete(StatusCodes.BadRequest, "Unable to apply action in instance.")
+              complete(StatusCodes.OK, instancesResponse)
             }
           case Failure(exception) =>
             logger.error(s"Unable to apply action in instance. Failed with : ${exception.getMessage}", exception)
-            complete(StatusCodes.BadRequest, "Unable to apply action in instance.")
+            complete(StatusCodes.BadRequest, "Unable to apply action on the instances.")
         }
       }
     }
@@ -1954,7 +1959,7 @@ object Main extends App {
     mayBeSite.isDefined
   }
 
-  def instancesAction(siteId: Long,ids: String,action: String): Future[Map[String,String]] =
+  private def instancesAction(siteId: Long, ids: String, action: String): Future[Map[String, String]] =
     Future {
       val idList = ids.split(",").toList
       val siteOpt = Site1.fromNeo4jGraph(siteId)
@@ -1975,10 +1980,10 @@ object Main extends App {
             case InstanceActionType.Start => AWSComputeAPI.startInstance(amazonEC2, instanceIds)
             case InstanceActionType.Stop => AWSComputeAPI.stopInstance(amazonEC2, instanceIds)
             case InstanceActionType.CreateSnapshot => {
-              val snapShots = for{instance <- instances
-                          instanceBlockingDevice <- instance.blockDeviceMappings
-                          volumeId <- instanceBlockingDevice.volume.volumeId
-                          snapShots <- AWSComputeAPI.createSnapshot(amazonEC2, volumeId)
+              val snapShots = for {instance <- instances
+                                   instanceBlockingDevice <- instance.blockDeviceMappings
+                                   volumeId <- instanceBlockingDevice.volume.volumeId
+                                   snapShots <- AWSComputeAPI.createSnapshot(amazonEC2, volumeId)
               } yield {
                   val volumeNew = instanceBlockingDevice.volume.copy(
                     currentSnapshot = Some(snapShots),
