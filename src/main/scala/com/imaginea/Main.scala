@@ -1586,21 +1586,23 @@ object Main extends App {
           parameter('strategy) { strategy => {
           //Collect all connection based among instance based on the strategy
           val connections = Future {
-            val strategyConnection: Instance => List[InstanceConnection] = ConnectionStrategy.toConnectionStrategy(strategy) match {
-              case ConnectionStrategy.Ssh => instance => instance.liveConnections
-              case ConnectionStrategy.SecurityGroup => instance => instance.estimatedConnections
+            def strategyConnection(getConnections: Instance => List[InstanceConnection]) = {
+              val siteOpt = Site1.fromNeo4jGraph(siteId)
+              val site = siteOpt.map(site =>
+                site.instances.flatMap(instance => getConnections(instance))
+              ).getOrElse(List.empty[InstanceConnection])
+              site
             }
-
-            val siteOpt = Site1.fromNeo4jGraph(siteId)
-            siteOpt.map(site =>
-              site.instances.flatMap(instance => strategyConnection(instance))
-            ).getOrElse(List.empty[InstanceConnection])
+            ConnectionStrategy.toConnectionStrategy(strategy) match {
+              case ConnectionStrategy.Ssh => strategyConnection(instance => instance.liveConnections)
+              case ConnectionStrategy.SecurityGroup => strategyConnection(instance => instance.estimatedConnections)
+            }
           }
           onComplete(connections) {
             case Success(connectionResponse) =>
-              if(connectionResponse.isEmpty){
+              if (connectionResponse.isEmpty) {
                 complete(StatusCodes.NoContent)
-              }else{
+              } else {
                 complete(StatusCodes.OK, connectionResponse)
               }
             case Failure(exception) =>
@@ -1959,7 +1961,7 @@ object Main extends App {
     mayBeSite.isDefined
   }
 
-  private def instancesAction(siteId: Long, ids: String, action: String): Future[Map[String, String]] =
+ private def instancesAction(siteId: Long, ids: String, action: String): Future[Map[String, String]] =
     Future {
       val idList = ids.split(",").toList
       val siteOpt = Site1.fromNeo4jGraph(siteId)
@@ -1968,8 +1970,10 @@ object Main extends App {
         .map(siteFilter => siteFilter.accountInfo)
 
       val regionVsInstance =
-        siteOpt.map(_.instances.filter(instance => idList.contains(instance.instanceId)))
-          .getOrElse(List.empty[Instance]).groupBy(_.region.getOrElse(""))
+        siteOpt.map( site => {
+          val instances = site.instances.filter(instance => idList.contains(instance.instanceId.getOrElse("")))
+          instances
+        }).getOrElse(List.empty[Instance]).groupBy(_.region.getOrElse(""))
 
       accountInfoOpt.map(accountInfo =>
         regionVsInstance.flatMap { case (region, instances) => {
